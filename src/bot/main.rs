@@ -1,6 +1,7 @@
 mod server_data;
 mod core;
 mod commands;
+mod sql;
 
 use std::sync::Arc;
 use poise::serenity_prelude as ser;
@@ -71,10 +72,13 @@ async fn main() {
     unsafe { __GLYFI_RUNTIME = Some(tokio::runtime::Handle::current()); }
 
     // Register the SIGINT handler.
+    //
+    // Do this *after* saving the runtime as the handler will
+    // attempt to enter the runtime.
     ctrlc::set_handler(|| unsafe { __glyfi_ctrlc_impl() }).expect("Failed to register SIGINT handler");
 
     // Initialise the database.
-//    sql::init().await;
+    unsafe { sql::__glyfi_init_db().await; }
 
     let args = Args::parse();
     let fw = poise::Framework::builder()

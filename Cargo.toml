@@ -3,7 +3,17 @@ name = "glyfi"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "glyfi_sql_defs"
+path = "lib/sql_defs.rs"
+
+[[bin]]
+name = "glyfi-init-db"
+path = "src/init/init_db.rs"
+
+[[bin]]
+name = "glyfi"
+path = "src/bot/main.rs"
 
 [dependencies]
 chrono = { version = "0.4.31", features = ["alloc"] }

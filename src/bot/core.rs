@@ -1,6 +1,8 @@
 use std::sync::atomic::AtomicBool;
-use poise::{BoxFuture, CreateReply};
+use poise::{CreateReply};
 use crate::{__glyfi_terminate_bot, Context, Error};
+use crate::sql::__glyfi_fini_db;
+
 /// Logging macros. These macros log an informational or error
 /// message. Depending on the program stage, the message will
 /// be displayed in the terminal or sent to Discord; The `sync`
@@ -76,13 +78,12 @@ pub async fn handle_command_error(e: poise::FrameworkError<'_, crate::Data, Erro
     }
 }
 
-pub async fn log_command(ctx: Context<'_>) -> BoxFuture<'_, ()> {
+pub async fn log_command(ctx: Context<'_>) {
     info!(
-        "{} invoked command /{}",
+        "{} invoked command {}",
         ctx.author().name,
-        ctx.invoked_command_name()
+        ctx.invocation_string()
     );
-    Box::pin(async {})
 }
 
 /// Truncate a string w/o panicking.
@@ -125,7 +126,7 @@ pub async fn terminate() {
         __glyfi_terminate_bot().await;
 
         info_sync!("Shutting down DB...");
-        //sql::shutdown().await;
+        __glyfi_fini_db().await;
     }
 
     // Exit the process.
