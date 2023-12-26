@@ -1,0 +1,3 @@
+[submodule "weekly_challenges"]
+	path = weekly_challenges
+	url = https://github.com/sungodmoth/weekly_challenges

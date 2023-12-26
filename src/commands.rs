@@ -1,7 +1,8 @@
 use poise::CreateReply;
-use poise::serenity_prelude::{Colour, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
-use crate::{Context, Res, sql};
-use crate::core::{DEFAULT_EMBED_COLOUR, handle_command_error};
+use poise::serenity_prelude::{ButtonStyle, Colour, CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
+use crate::{Context, info, Res, sql};
+use crate::core::{DEFAULT_EMBED_COLOUR, file_mtime, handle_command_error, InteractionID};
+use crate::sql::Challenge;
 
 /// Display your user profile.
 //
@@ -75,7 +76,7 @@ pub async fn profile(ctx: Context<'_>) -> Res {
         embed = embed.field(
             "Highest ranking in Glyphs Challenge",
             format!("{}", data.highest_ranking_glyphs),
-            false
+            false,
         );
     }
 
@@ -88,10 +89,56 @@ pub async fn profile(ctx: Context<'_>) -> Res {
         embed = embed.field(
             "Highest ranking in Ambigrams Challenge",
             format!("{}", data.highest_ranking_ambigrams),
-            false
+            false,
         );
     }
 
     ctx.send(CreateReply::default().embed(embed)).await?;
+    Ok(())
+}
+
+/// Submit a glyph/ambigram for a challenge.
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error")]
+pub async fn submit(
+    ctx: Context<'_>,
+    #[description = "Which challenge to set the prompt for"] challenge: Challenge,
+    #[description = "The prompt for the challenge"] prompt: String,
+) -> Res {
+    // This is gonna take a while...
+    ctx.defer_ephemeral().await?;
+    let name = match challenge {
+        Challenge::Glyph => "glyph_announcement",
+        Challenge::Ambigram => "ambigram_announcement",
+    };
+
+    // Command for generating the image.
+    let mut command = tokio::process::Command::new("./weekly_challenges.py");
+    command.arg(name);
+    command.arg(&prompt);
+    command.kill_on_drop(true);
+    command.current_dir("./weekly_challenges");
+    info!("Running Shell Command {:?}", command);
+
+    // Run it.
+    let res = command.spawn()?.wait().await?;
+    if !res.success() { return Err("Failed to generate image".into()); }
+    let path = challenge.announcement_image_path();
+
+    // Get mtime. This is just a little sanity check.
+    let mtime = file_mtime(&path)?;
+
+    // Reply with the image.
+    ctx.send(CreateReply::default()
+        .content("Announcement for this week’s challenge:")
+        .attachment(CreateAttachment::path(path).await?)
+        .components(vec![CreateActionRow::Buttons(vec![
+            CreateButton::new(format!(
+                "{}:{}:{}",
+                InteractionID::ConfirmAnnouncement.raw(),
+                challenge.raw(),
+                mtime,
+            )).label("Confirm").style(ButtonStyle::Success)
+        ])])
+    ).await?;
     Ok(())
 }

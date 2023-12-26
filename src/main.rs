@@ -7,7 +7,7 @@ mod events;
 use std::sync::Arc;
 use poise::serenity_prelude as ser;
 use clap::Parser;
-use crate::commands::{profile};
+use crate::commands::{profile, submit};
 use crate::core::{log_command, terminate};
 use crate::events::GlyfiEvents;
 use crate::server_data::SERVER_ID;
@@ -88,6 +88,7 @@ async fn main() {
             pre_command: |ctx| Box::pin(async move { log_command(ctx).await; }),
             commands: vec![
                 profile(),
+                submit(),
             ],
             ..Default::default()
         })

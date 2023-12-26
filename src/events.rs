@@ -1,6 +1,6 @@
 use poise::serenity_prelude::*;
-use crate::{err, info, info_sync, sql};
-use crate::core::report_user_error;
+use crate::{err, info, info_sync, Res, sql};
+use crate::core::{file_mtime, InteractionID, report_user_error};
 use crate::server_data::{AMBIGRAM_SUBMISSION_CHANNEL_ID, GLYPH_SUBMISSION_CHANNEL_ID, SUBMIT_EMOJI_ID};
 use crate::sql::Challenge;
 
@@ -21,6 +21,30 @@ macro_rules! run {
     }
 }
 
+/// Mark that the announcement image for a challenge has been acknowledged.
+async fn act_on_confirm_announcement(ctx: &Context, i: &mut ComponentInteraction) -> Res {
+    let mut it = i.data.custom_id.split(':').skip(1);
+    let challenge = it.next().ok_or("Invalid interaction ID")?.parse::<Challenge>()?;
+    let time = it.next().ok_or("Invalid interaction ID")?.parse::<u64>()?;
+
+    // Check that the file is not out of date.
+    let path = challenge.announcement_image_path();
+    let mtime = file_mtime(&path)?;
+    if time != mtime {
+        info!("Refusing to accept outdated announcement image for {:?}. Please regenerate it.", challenge);
+        return Ok(());
+    }
+
+    // TODO: Actually mark that we’ve acknowledged the announcement image.
+    let _ = i.create_response(&ctx, CreateInteractionResponse::Message(
+        CreateInteractionResponseMessage::new()
+            .content("Confirmed.")
+            .ephemeral(true)
+    )).await;
+    Ok(())
+}
+
+/// Get the confirm emoji.
 fn confirm_reaction() -> ReactionType { return ReactionType::Unicode("✅".into()); }
 
 /// Check if we care about a reaction event.
@@ -48,6 +72,47 @@ async fn match_relevant_reaction_event(ctx: &Context, r: &Reaction) -> Option<(
 
 #[async_trait]
 impl EventHandler for GlyfiEvents {
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        match interaction {
+            // Ignore commands here.
+            Interaction::Command(_) => {}
+
+            // Buttons and other components.
+            Interaction::Component(mut i) => {
+                info!("Processing interaction: {}", i.data.custom_id);
+                let id: InteractionID = match i.data.custom_id.parse() {
+                    Ok(id) => id,
+                    Err(e) => {
+                        err!("{}", e);
+                        let _ = i.create_response(ctx, CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("Error: Unknown ID '{}'")
+                                .ephemeral(true)
+                        )).await;
+                        return;
+                    }
+                };
+
+                let res = match id {
+                    InteractionID::ConfirmAnnouncement => act_on_confirm_announcement(&ctx, &mut i).await,
+                };
+
+                if let Err(e) = res {
+                    err!("Error processing interaction: {}", e);
+                    let _ = i.create_response(ctx, CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content(format!("Error processing interaction: {}", e))
+                            .ephemeral(true)
+                    )).await;
+                }
+            }
+
+            _ => {
+                info!("Unsupported interaction {:?}", interaction);
+            }
+        }
+    }
+
     /// Check whether a user added the submit emoji.
     async fn reaction_add(&self, ctx: Context, r: Reaction) {
         let Some((user, message, challenge)) =

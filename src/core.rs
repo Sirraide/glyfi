@@ -1,11 +1,36 @@
+use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use poise::{CreateReply};
 use poise::serenity_prelude::{CacheHttp, Colour, CreateMessage, UserId};
 use crate::{__glyfi_terminate_bot, Context, Error, Res};
+use crate::core::InteractionID::ConfirmAnnouncement;
 use crate::sql::__glyfi_fini_db;
 
 /// Default colour to use for embeds.
 pub const DEFAULT_EMBED_COLOUR: Colour = Colour::from_rgb(176, 199, 107);
+
+/// Button ids.
+#[derive(Clone, Copy, Debug)]
+#[repr(u8)]
+pub enum InteractionID {
+    ConfirmAnnouncement = 0,
+}
+
+impl InteractionID {
+    pub fn raw(self) -> u8 {
+        self as _
+    }
+}
+
+impl FromStr for InteractionID {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.split(':').next() {
+            Some("0") => Ok(ConfirmAnnouncement),
+            id => Err(format!("Unknown interaction ID '{:?}'", id).into())
+        }
+    }
+}
 
 /// Logging macros. These macros log an informational or error
 /// message. Depending on the program stage, the message will
@@ -43,6 +68,14 @@ pub async fn __glyfi_log_internal(e: &str) { eprintln!("[Info]: {}", e); }
 pub fn __glyfi_log_internal_error_sync(e: &str) { eprintln!("[Error]: {}", e); }
 
 pub fn __glyfi_log_internal_sync(e: &str) { eprintln!("[Info]: {}", e); }
+
+/// Get the mtime of a file.
+pub fn file_mtime(path: &str) -> Result<u64, Error> {
+    Ok(std::fs::metadata(path)?
+        .modified()?
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs())
+}
 
 pub async fn handle_command_error(e: poise::FrameworkError<'_, crate::Data, Error>) {
     // Reply with a message if possible. Otherwise, just log the error.

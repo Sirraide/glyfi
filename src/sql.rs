@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use const_format::formatcp;
 use poise::serenity_prelude::{MessageId, UserId};
 use sqlx::migrate::MigrateDatabase;
@@ -7,11 +8,37 @@ use crate::{Error, info_sync, Res};
 pub const DB_PATH: &str = "glyfi.db";
 
 /// What challenge a submission belongs to.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, poise::ChoiceParameter)]
 #[repr(u8)]
 pub enum Challenge {
     Glyph = 0,
     Ambigram = 1,
+}
+
+impl Challenge {
+    pub fn raw(self) -> u8 {
+        self as _
+    }
+
+    pub fn announcement_image_path(self) -> String {
+        let name = match self {
+            Challenge::Glyph => "glyph_announcement",
+            Challenge::Ambigram => "ambigram_announcement",
+        };
+
+        return format!("./weekly_challenges/{}.png", name);
+    }
+}
+
+impl FromStr for Challenge {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "0" => Ok(Challenge::Glyph),
+            "1" => Ok(Challenge::Ambigram),
+            id => Err(format!("Unknown challenge ID '{:?}'", id).into())
+        }
+    }
 }
 
 /// Determines what kind of actions should be taken in a week.
@@ -45,7 +72,7 @@ pub enum Week {
 }
 
 /// Profile for a user.
-#[derive(Clone, Debug, FromRow)]
+#[derive(Clone, Debug)]
 pub struct UserProfileData {
     pub nickname: Option<String>,
 

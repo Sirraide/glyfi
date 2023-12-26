@@ -3,10 +3,10 @@
   - [ ] `/edit announcement <message>` (presumably using a multi-line text edit control, assuming you can fit an entire message in there, that is) 
   - [ ] `/edit userdata <user> <entry> <value>`
   - [ ] `/skip ( "Glyph" | "Ambigram" )` Mark next week as special. 
-  - [ ] `/submit prompt ( "Glyph" | "Ambigram" ) <prompt>` (maybe show a text edit control instead of requiring the user to enter the prompt here; also, maybe just call this `/prompt` instead?).
-    - [ ] Display a preview of the announcement message (or just outright send it in the bot chat or whatever) and add a ‘Confirm’ button.
+  - [x] `/submit ( "Glyph" | "Ambigram" ) <prompt>` 
+    - [x] Display a preview of the announcement message (or just outright send it in the bot chat or whatever) and add a ‘Confirm’ button.
 - User Commands
-  - [ ] `/edit nickname`
+  - [ ] `/edit nickname` 
   - [ ] `/help <topic>` Show help information for a specific topic. Specifically: `commands` to list all commands (only list moderation commands if the user is a moderator).
   - [ ] `/profile`
     - [x] self
