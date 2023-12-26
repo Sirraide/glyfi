@@ -2,7 +2,7 @@
 /target
 
 ## Server-specific data (e.g. bot token, role ids etc.)
-/src/bot/server_data.rs
+/src/server_data.rs
 
 ## Database.
 /glyfi.db
