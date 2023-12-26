@@ -1,7 +1,7 @@
 ## Running
 The first time you start the bot, or after adding a command, run
 ```bash
-$ cargo run -- register
+$ cargo run -- --register
 ```
 
 From then on, just run
