@@ -21,24 +21,37 @@ macro_rules! run {
     }
 }
 
+fn confirm_reaction() -> ReactionType { return ReactionType::Unicode("✅".into()); }
+
+/// Check if we care about a reaction event.
+async fn match_relevant_reaction_event(ctx: &Context, r: &Reaction) -> Option<(
+    UserId,
+    Message,
+    Challenge,
+)> {
+    // Ignore anything that isn’t the emoji we care about.
+    if !matches!(r.emoji, ReactionType::Custom {id: SUBMIT_EMOJI_ID, .. }) { return None; };
+
+    // Make sure we have all the information we need.
+    let Some(user) = r.user_id else { return None; };
+    let Ok(message) = r.message(&ctx).await else { return None; };
+
+    // Ignore this outside of the submission channels.
+    let challenge = match message.channel_id {
+        GLYPH_SUBMISSION_CHANNEL_ID => Challenge::Glyph,
+        AMBIGRAM_SUBMISSION_CHANNEL_ID => Challenge::Ambigram,
+        _ => return None
+    };
+
+    return Some((user, message, challenge));
+}
+
 #[async_trait]
 impl EventHandler for GlyfiEvents {
     /// Check whether a user added the submit emoji.
     async fn reaction_add(&self, ctx: Context, r: Reaction) {
-        // Ignore anything that isn’t the emoji we care about.
-        if !matches!(r.emoji, ReactionType::Custom {id: SUBMIT_EMOJI_ID, .. }) { return; };
-
-        // Make sure we have all the information we need.
-        let Some(user) = r.user_id else { return; };
-        let Ok(message) = r.message(&ctx).await else { return; };
-        let author = message.author.id;
-
-        // Ignore this outside of the submission channels.
-        let challenge = match message.channel_id {
-            GLYPH_SUBMISSION_CHANNEL_ID => Challenge::Glyph,
-            AMBIGRAM_SUBMISSION_CHANNEL_ID => Challenge::Ambigram,
-            _ => return
-        };
+        let Some((user, message, challenge)) =
+            match_relevant_reaction_event(&ctx, &r).await else { return; };
 
         // Helper to remove the reaction on error and return.
         macro_rules! remove_reaction {
@@ -49,7 +62,7 @@ impl EventHandler for GlyfiEvents {
         }
 
         // If someone reacted w/ this emoji to someone else’s message, remove it.
-        if user != author { remove_reaction!(ctx, r); }
+        if user != message.author.id { remove_reaction!(ctx, r); }
 
         // Check the message for attachments.
         if message.attachments.len() != 1 {
@@ -74,15 +87,41 @@ impl EventHandler for GlyfiEvents {
         // Add the submission.
         run!(
             ctx, user,
-            sql::add_submission(message.id, challenge, author, &att.url).await,
+            sql::add_submission(message.id, challenge, user, &att.url).await,
             "Error adding submission"
         );
 
         // Done.
-        info!("Added submission from {} for challenge {:?}", user, challenge);
-        if let Err(e) = message.react(ctx, ReactionType::Unicode("✅".into())).await {
+        info!("Added submission {} from {} for challenge {:?}", message.id, user, challenge);
+        if let Err(e) = message.react(ctx, confirm_reaction()).await {
             err!("Error reacting to submission: {}", e);
         }
+    }
+
+    async fn reaction_remove(&self, ctx: Context, r: Reaction) {
+        // Check if we care about this.
+        let Some((user, message, challenge)) =
+            match_relevant_reaction_event(&ctx, &r).await else { return; };
+
+        // If the reaction that was removed is not the reaction of the
+        // user that sent the message (which I guess can happen if there
+        // is ever some amount of downtime on our part?) then ignore it.
+        if user != message.author.id { return; };
+
+        // Remove the submission.
+        run!(
+            ctx, user,
+            sql::remove_submission(message.id, challenge).await,
+            "Error removing submission"
+        );
+
+        // Done.
+        info!("Removed submission {} from {} for challenge {:?}", message.id, user, challenge);
+
+        // Remove our confirmation reaction. This is allowed to fail in case
+        // it was already removed somehow.
+        let me = ctx.cache.current_user().id;
+        let _ = message.delete_reaction(ctx, Some(me), confirm_reaction()).await;
     }
 
     async fn ready(&self, _ctx: Context, ready: Ready) {

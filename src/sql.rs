@@ -45,6 +45,17 @@ pub enum Week {
 
 static mut __GLYFI_DB_POOL: Option<SqlitePool> = None;
 
+/// Get the global sqlite connexion pool.
+fn pool() -> &'static SqlitePool {
+    unsafe { __GLYFI_DB_POOL.as_ref().unwrap() }
+}
+
+/*/// Merge the DB into one file.
+pub async fn truncate_wal() {
+    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").execute(pool()).await.unwrap();
+}
+*/
+
 /// Only intended to be called by [`terminate()`].
 pub async unsafe fn __glyfi_fini_db() {
     if let Some(pool) = __GLYFI_DB_POOL.as_ref() { pool.close().await; }
@@ -64,13 +75,14 @@ pub async unsafe fn __glyfi_init_db() {
     // Create submissions table.
     sqlx::query(r#"
         CREATE TABLE IF NOT EXISTS submissions (
-            message INTEGER PRIMARY KEY, -- Message ID of the submission.
+            message INTEGER, -- Message ID of the submission.
             week INTEGER NOT NULL, -- This is just an integer.
             challenge INTEGER NOT NULL, -- See Challenge enum.
             author INTEGER NOT NULL, -- Discord user ID of the author.
             link TEXT NOT NULL, -- Link to the submission.
             time INTEGER NOT NULL DEFAULT (unixepoch()), -- Time of submission.
-            votes INTEGER NOT NULL DEFAULT 0 -- Number of votes.
+            votes INTEGER NOT NULL DEFAULT 0, -- Number of votes.
+            PRIMARY KEY (message, week, challenge)
         ) STRICT;
     "#).execute(pool()).await.unwrap();
 
@@ -139,13 +151,19 @@ pub async fn current_week() -> Result<i64, Error> {
         .map_err(|e| format!("Failed to get current week: {}", e).into())
 }
 
-/// Get the global sqlite connexion pool.
-fn pool() -> &'static SqlitePool {
-    unsafe { __GLYFI_DB_POOL.as_ref().unwrap() }
+/// Remove a submission for the current week.
+pub async fn remove_submission(message: MessageId, challenge: Challenge) -> Res {
+    sqlx::query(r#"
+        DELETE FROM submissions
+        WHERE message = ?
+        AND week = ?
+        AND challenge = ?;
+    "#)
+    .bind(message.get() as i64)
+    .bind(current_week().await?)
+    .bind(challenge as i64)
+    .execute(pool())
+    .await
+    .map(|_| ())
+    .map_err(|e| e.into())
 }
-
-/// Merge the DB into one file.
-pub async fn truncate_wal() {
-    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").execute(pool()).await.unwrap();
-}
-
