@@ -7,7 +7,7 @@ mod events;
 use std::sync::Arc;
 use poise::serenity_prelude as ser;
 use clap::Parser;
-use crate::commands::{edit, profile, submit};
+use crate::commands::{nickname, profile, submit};
 use crate::core::{log_command, terminate};
 use crate::events::GlyfiEvents;
 use crate::server_data::SERVER_ID;
@@ -87,7 +87,7 @@ async fn main() {
         .options(poise::FrameworkOptions {
             pre_command: |ctx| Box::pin(async move { log_command(ctx).await; }),
             commands: vec![
-                edit(),
+                nickname(),
                 profile(),
                 submit(),
             ],

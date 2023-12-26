@@ -1,18 +1,8 @@
 use poise::CreateReply;
-use poise::serenity_prelude::{ButtonStyle, Colour, CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
-use sqlx::ColumnIndex;
+use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use crate::{Context, info, Res, sql};
 use crate::core::{DEFAULT_EMBED_COLOUR, file_mtime, handle_command_error, InteractionID};
 use crate::sql::Challenge;
-
-#[poise::command(
-slash_command,
-ephemeral,
-guild_only,
-on_error = "handle_command_error",
-subcommands("nickname")
-)]
-pub async fn edit(_: Context<'_>) -> Res { unreachable!(); }
 
 /// Edit your nickname.
 #[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error")]
