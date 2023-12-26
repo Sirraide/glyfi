@@ -3,17 +3,9 @@ name = "glyfi"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-name = "glyfi_sql_defs"
-path = "lib/sql_defs.rs"
-
-[[bin]]
-name = "glyfi-init-db"
-path = "src/init/init_db.rs"
-
 [[bin]]
 name = "glyfi"
-path = "src/bot/main.rs"
+path = "src/main.rs"
 
 [dependencies]
 chrono = { version = "0.4.31", features = ["alloc"] }

@@ -2,12 +2,14 @@ mod server_data;
 mod core;
 mod commands;
 mod sql;
+mod events;
 
 use std::sync::Arc;
 use poise::serenity_prelude as ser;
 use clap::Parser;
 use crate::commands::test;
 use crate::core::{log_command, terminate};
+use crate::events::GlyfiEvents;
 use crate::server_data::SERVER_ID;
 
 /// Global context. Ugly, but this is the best way I can think
@@ -107,6 +109,7 @@ async fn main() {
 
     ser::ClientBuilder::new(server_data::DISCORD_BOT_TOKEN, ser::GatewayIntents::all())
         .framework(fw)
+        .event_handler(GlyfiEvents)
         .await
         .unwrap()
         .start()

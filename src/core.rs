@@ -1,6 +1,7 @@
 use std::sync::atomic::AtomicBool;
 use poise::{CreateReply};
-use crate::{__glyfi_terminate_bot, Context, Error};
+use poise::serenity_prelude::{CacheHttp, CreateMessage, UserId};
+use crate::{__glyfi_terminate_bot, Context, Error, Res};
 use crate::sql::__glyfi_fini_db;
 
 /// Logging macros. These macros log an informational or error
@@ -9,26 +10,26 @@ use crate::sql::__glyfi_fini_db;
 /// variants always log to the terminal.
 #[macro_export]
 macro_rules! info {
-    ($arg:expr) => { $crate::core::__glyfi_log_internal(&*($arg)).await; };
-    ($fmt:literal $(,$arg:expr)*) => { $crate::core::__glyfi_log_internal(format!($fmt $(,$arg)*).as_str()).await; };
+    ($arg:expr) => { $crate::core::__glyfi_log_internal(&*($arg)).await };
+    ($fmt:literal $(,$arg:expr)*) => { $crate::core::__glyfi_log_internal(format!($fmt $(,$arg)*).as_str()).await };
 }
 
 #[macro_export]
 macro_rules! info_sync {
-    ($arg:expr) => { $crate::core::__glyfi_log_internal_sync(&*($arg)); };
-    ($fmt:literal $(,$arg:expr)*) => { $crate::core::__glyfi_log_internal_sync(format!($fmt $(,$arg)*).as_str()); };
+    ($arg:expr) => { $crate::core::__glyfi_log_internal_sync(&*($arg)) };
+    ($fmt:literal $(,$arg:expr)*) => { $crate::core::__glyfi_log_internal_sync(format!($fmt $(,$arg)*).as_str()) };
 }
 
 #[macro_export]
 macro_rules! err {
-    ($arg:expr) => { $crate::core::__glyfi_log_internal_error(&*($arg)).await; };
-    ($fmt:literal $(,$arg:expr)*) => { $crate::core::__glyfi_log_internal_error(format!($fmt $(,$arg)*).as_str()).await; };
+    ($arg:expr) => { $crate::core::__glyfi_log_internal_error(&*($arg)).await };
+    ($fmt:literal $(,$arg:expr)*) => { $crate::core::__glyfi_log_internal_error(format!($fmt $(,$arg)*).as_str()).await };
 }
 
 #[macro_export]
 macro_rules! err_sync {
-    ($arg:expr) => { $crate::core::__glyfi_log_internal_error_sync(&*($arg)); };
-    ($fmt:literal $(,$arg:expr)*) => { $crate::core::__glyfi_log_internal_error_sync(format!($fmt $(,$arg)*).as_str()); };
+    ($arg:expr) => { $crate::core::__glyfi_log_internal_error_sync(&*($arg)) };
+    ($fmt:literal $(,$arg:expr)*) => { $crate::core::__glyfi_log_internal_error_sync(format!($fmt $(,$arg)*).as_str()) };
 }
 
 /// Logging.
@@ -84,6 +85,24 @@ pub async fn log_command(ctx: Context<'_>) {
         ctx.author().name,
         ctx.invocation_string()
     );
+}
+
+/// Report an error resulting from a user misusing a command/function.
+pub async fn report_user_error(ctx: impl CacheHttp, user: UserId, s: &str) {
+    info!("User Error ({}): {}", user, s);
+
+    // Helper for error handling.
+    async fn aux(ctx: &impl CacheHttp, user: UserId, s: &str) -> Res {
+        // Attempt to DM the user about this.
+        let ch = user.create_dm_channel(&ctx).await?;
+        ch.send_message(&ctx, CreateMessage::new().content(format!("Error: {}", s))).await?;
+        Ok(())
+    }
+
+    match aux(&ctx, user, s).await {
+        Err(e) => err!("Error trying to notify user about error '{}': {}", s, e),
+        _ => {}
+    };
 }
 
 /// Truncate a string w/o panicking.
