@@ -158,7 +158,8 @@ pub async unsafe fn __glyfi_init_db() {
     sqlx::query(r#"
         CREATE TABLE IF NOT EXISTS weeks (
             week INTEGER PRIMARY KEY, -- Week number.
-            kind INTEGER NOT NULL -- See Week enum.
+            glyphs_challenge_kind INTEGER NOT NULL, -- See Week enum.
+            ambigram_challenge_kind INTEGER NOT NULL -- See Week enum.
         ) STRICT;
     "#).execute(pool()).await.unwrap();
 }
