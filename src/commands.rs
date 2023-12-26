@@ -143,6 +143,9 @@ pub async fn submit(
     if !res.success() { return Err("Failed to generate image".into()); }
     let path = challenge.announcement_image_path();
 
+    // Save prompt.
+    sql::set_prompt(challenge, &prompt).await?;
+
     // Get mtime. This is just a little sanity check.
     let mtime = file_mtime(&path)?;
 

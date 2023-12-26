@@ -8,7 +8,7 @@ use crate::{Error, info_sync, Res};
 pub const DB_PATH: &str = "glyfi.db";
 
 /// What challenge a submission belongs to.
-#[derive(Copy, Clone, Debug, poise::ChoiceParameter)]
+#[derive(Copy, Clone, Debug, PartialEq, poise::ChoiceParameter)]
 #[repr(u8)]
 pub enum Challenge {
     Glyph = 0,
@@ -69,6 +69,12 @@ impl FromStr for Challenge {
 pub enum Week {
     Regular = 0,
     Special = 1,
+}
+
+impl Week {
+    pub fn raw(self) -> u8 {
+        self as _
+    }
 }
 
 /// Profile for a user.
@@ -185,8 +191,10 @@ pub async unsafe fn __glyfi_init_db() {
     sqlx::query(r#"
         CREATE TABLE IF NOT EXISTS weeks (
             week INTEGER PRIMARY KEY, -- Week number.
-            glyphs_challenge_kind INTEGER NOT NULL, -- See Week enum.
-            ambigram_challenge_kind INTEGER NOT NULL -- See Week enum.
+            glyph_challenge_kind INTEGER, -- See Week enum.
+            ambigram_challenge_kind INTEGER, -- See Week enum.
+            glyph_prompt TEXT, -- Prompt for the Glyphs Challenge.
+            ambigram_prompt TEXT -- Prompt for the Ambigram Challenge.
         ) STRICT;
     "#).execute(pool()).await.unwrap();
 }
@@ -312,25 +320,6 @@ pub async fn remove_submission(message: MessageId, challenge: Challenge) -> Res 
         .map_err(|e| e.into())
 }
 
-
-//         CREATE TABLE IF NOT EXISTS users (
-//             id INTEGER PRIMARY KEY, -- Discord user ID.
-//             nickname TEXT, -- Nickname.
-//
-//             -- Number of 1st, 2nd, 3rd place finishes in the Glyphs Challenge.
-//             glyphs_first INTEGER NOT NULL DEFAULT 0,
-//             glyphs_second INTEGER NOT NULL DEFAULT 0,
-//             glyphs_third INTEGER NOT NULL DEFAULT 0,
-//
-//             -- Number of 1st, 2nd, 3rd place finishes in the Ambigram Challenge.
-//             ambigrams_first INTEGER NOT NULL DEFAULT 0,
-//             ambigrams_second INTEGER NOT NULL DEFAULT 0,
-//             ambigrams_third INTEGER NOT NULL DEFAULT 0,
-//
-//             -- Highest ranking in either challenge.
-//             highest_ranking_glyphs INTEGER NOT NULL DEFAULT 0,
-//             highest_ranking_ambigrams INTEGER NOT NULL DEFAULT 0
-//         ) STRICT;
 /// Set a user’s nickname.
 pub async fn set_nickname(user: UserId, name: &str) -> Res {
     sqlx::query(r#"
@@ -343,4 +332,31 @@ pub async fn set_nickname(user: UserId, name: &str) -> Res {
     .await
     .map(|_|())
     .map_err(|e| e.into())
+}
+
+//         CREATE TABLE IF NOT EXISTS weeks (
+//             week INTEGER PRIMARY KEY, -- Week number.
+//             glyph_challenge_kind INTEGER, -- See Week enum.
+//             ambigram_challenge_kind INTEGER, -- See Week enum.
+//             glyph_prompt TEXT, -- Prompt for the Glyphs Challenge.
+//             ambigram_prompt TEXT -- Prompt for the Ambigram Challenge.
+//         ) STRICT;
+
+/// Set the prompt for a challenge and week.
+pub async fn set_prompt(challenge: Challenge, prompt: &str) -> Res {
+    let name = if challenge == Challenge::Glyph { "glyph"} else { "ambigram" };
+    sqlx::query(&format!(r#"
+        INSERT INTO weeks (week, {name}_challenge_kind, {name}_prompt)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT (week)
+        DO UPDATE
+        SET {name}_challenge_kind = ?2, {name}_prompt = ?3;
+    "#))
+        .bind(current_week().await?)
+        .bind(Week::Regular.raw())
+        .bind(prompt)
+        .execute(pool())
+        .await
+        .map(|_| ())
+        .map_err(|e| e.into())
 }
