@@ -1,8 +1,37 @@
 use poise::CreateReply;
 use poise::serenity_prelude::{ButtonStyle, Colour, CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
+use sqlx::ColumnIndex;
 use crate::{Context, info, Res, sql};
 use crate::core::{DEFAULT_EMBED_COLOUR, file_mtime, handle_command_error, InteractionID};
 use crate::sql::Challenge;
+
+#[poise::command(
+slash_command,
+ephemeral,
+guild_only,
+on_error = "handle_command_error",
+subcommands("nickname")
+)]
+pub async fn edit(_: Context<'_>) -> Res { unreachable!(); }
+
+/// Edit your nickname.
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error")]
+pub async fn nickname(
+    ctx: Context<'_>,
+    name: String,
+) -> Res {
+    // Name must not be empty, must not include only whitespace
+    // and must not be longer than 200 characters.
+    let name = name.trim();
+    if name.is_empty() || name.len() > 200 {
+        return Err("Name must not be empty and contain at most 200 characters".into());
+    }
+
+    // Set nickname.
+    sql::set_nickname(ctx.author().id, name).await?;
+    ctx.say(format!("Set your nickname to ‘{}’", name)).await?;
+    Ok(())
+}
 
 /// Display your user profile.
 //

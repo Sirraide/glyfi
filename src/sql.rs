@@ -295,7 +295,6 @@ pub async fn get_user_profile(user: UserId) -> Result<UserProfileData, Error> {
     })
 }
 
-
 /// Remove a submission for the current week.
 pub async fn remove_submission(message: MessageId, challenge: Challenge) -> Res {
     sqlx::query(r#"
@@ -311,4 +310,37 @@ pub async fn remove_submission(message: MessageId, challenge: Challenge) -> Res 
         .await
         .map(|_| ())
         .map_err(|e| e.into())
+}
+
+
+//         CREATE TABLE IF NOT EXISTS users (
+//             id INTEGER PRIMARY KEY, -- Discord user ID.
+//             nickname TEXT, -- Nickname.
+//
+//             -- Number of 1st, 2nd, 3rd place finishes in the Glyphs Challenge.
+//             glyphs_first INTEGER NOT NULL DEFAULT 0,
+//             glyphs_second INTEGER NOT NULL DEFAULT 0,
+//             glyphs_third INTEGER NOT NULL DEFAULT 0,
+//
+//             -- Number of 1st, 2nd, 3rd place finishes in the Ambigram Challenge.
+//             ambigrams_first INTEGER NOT NULL DEFAULT 0,
+//             ambigrams_second INTEGER NOT NULL DEFAULT 0,
+//             ambigrams_third INTEGER NOT NULL DEFAULT 0,
+//
+//             -- Highest ranking in either challenge.
+//             highest_ranking_glyphs INTEGER NOT NULL DEFAULT 0,
+//             highest_ranking_ambigrams INTEGER NOT NULL DEFAULT 0
+//         ) STRICT;
+/// Set a user’s nickname.
+pub async fn set_nickname(user: UserId, name: &str) -> Res {
+    sqlx::query(r#"
+        INSERT INTO users (id, nickname) VALUES (?1, ?2)
+        ON CONFLICT (id) DO UPDATE SET nickname = ?2;
+    "#)
+    .bind(user.get() as i64)
+    .bind(name)
+    .execute(pool())
+    .await
+    .map(|_|())
+    .map_err(|e| e.into())
 }
