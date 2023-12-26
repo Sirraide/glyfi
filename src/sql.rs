@@ -1,6 +1,7 @@
+use const_format::formatcp;
 use poise::serenity_prelude::{MessageId, UserId};
 use sqlx::migrate::MigrateDatabase;
-use sqlx::{Sqlite, SqlitePool};
+use sqlx::{FromRow, Sqlite, SqlitePool};
 use crate::{Error, info_sync, Res};
 
 pub const DB_PATH: &str = "glyfi.db";
@@ -43,6 +44,30 @@ pub enum Week {
     Special = 1,
 }
 
+/// Profile for a user.
+#[derive(Clone, Debug, FromRow)]
+pub struct UserProfileData {
+    pub nickname: Option<String>,
+
+    /// Number of 1st, 2nd, 3rd place finishes in the Glyphs Challenge.
+    pub glyphs_first: i64,
+    pub glyphs_second: i64,
+    pub glyphs_third: i64,
+
+    /// Number of 1st, 2nd, 3rd place finishes in the Ambigram Challenge.
+    pub ambigrams_first: i64,
+    pub ambigrams_second: i64,
+    pub ambigrams_third: i64,
+
+    /// Highest ranking in either challenge.
+    pub highest_ranking_glyphs: i64,
+    pub highest_ranking_ambigrams: i64,
+
+    /// Number of submissions.
+    pub glyphs_submissions: i64,
+    pub ambigrams_submissions: i64,
+}
+
 static mut __GLYFI_DB_POOL: Option<SqlitePool> = None;
 
 /// Get the global sqlite connexion pool.
@@ -83,6 +108,28 @@ pub async unsafe fn __glyfi_init_db() {
             time INTEGER NOT NULL DEFAULT (unixepoch()), -- Time of submission.
             votes INTEGER NOT NULL DEFAULT 0, -- Number of votes.
             PRIMARY KEY (message, week, challenge)
+        ) STRICT;
+    "#).execute(pool()).await.unwrap();
+
+    // Cached user profile data (excludes current week, obviously).
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY, -- Discord user ID.
+            nickname TEXT, -- Nickname.
+
+            -- Number of 1st, 2nd, 3rd place finishes in the Glyphs Challenge.
+            glyphs_first INTEGER NOT NULL DEFAULT 0,
+            glyphs_second INTEGER NOT NULL DEFAULT 0,
+            glyphs_third INTEGER NOT NULL DEFAULT 0,
+
+            -- Number of 1st, 2nd, 3rd place finishes in the Ambigram Challenge.
+            ambigrams_first INTEGER NOT NULL DEFAULT 0,
+            ambigrams_second INTEGER NOT NULL DEFAULT 0,
+            ambigrams_third INTEGER NOT NULL DEFAULT 0,
+
+            -- Highest ranking in either challenge.
+            highest_ranking_glyphs INTEGER NOT NULL DEFAULT 0,
+            highest_ranking_ambigrams INTEGER NOT NULL DEFAULT 0
         ) STRICT;
     "#).execute(pool()).await.unwrap();
 
@@ -132,15 +179,15 @@ pub async fn add_submission(
             link
         ) VALUES (?, ?, ?, ?, ?);
     "#)
-    .bind(message.get() as i64)
-    .bind(current_week().await?)
-    .bind(challenge as i64)
-    .bind(author.get() as i64)
-    .bind(link)
-    .execute(pool())
-    .await
-    .map(|_| ())
-    .map_err(|e| e.into())
+        .bind(message.get() as i64)
+        .bind(current_week().await?)
+        .bind(challenge as i64)
+        .bind(author.get() as i64)
+        .bind(link)
+        .execute(pool())
+        .await
+        .map(|_| ())
+        .map_err(|e| e.into())
 }
 
 /// Get the current week.
@@ -151,6 +198,76 @@ pub async fn current_week() -> Result<i64, Error> {
         .map_err(|e| format!("Failed to get current week: {}", e).into())
 }
 
+/// Get profile data for a user.
+pub async fn get_user_profile(user: UserId) -> Result<UserProfileData, Error> {
+    #[derive(Default, FromRow)]
+    pub struct UserProfileDataFirst {
+        pub nickname: Option<String>,
+        pub glyphs_first: i64,
+        pub glyphs_second: i64,
+        pub glyphs_third: i64,
+        pub ambigrams_first: i64,
+        pub ambigrams_second: i64,
+        pub ambigrams_third: i64,
+        pub highest_ranking_glyphs: i64,
+        pub highest_ranking_ambigrams: i64,
+    }
+
+    #[derive(Default, FromRow)]
+    pub struct UserProfileDataSecond {
+        pub glyphs_submissions: i64,
+        pub ambigrams_submissions: i64,
+    }
+
+    let first: UserProfileDataFirst = sqlx::query_as(r#"
+        SELECT
+            nickname,
+            glyphs_first, glyphs_second, glyphs_third,
+            ambigrams_first, ambigrams_second, ambigrams_third,
+            highest_ranking_glyphs, highest_ranking_ambigrams
+        FROM users
+        WHERE id = ?;
+    "#)
+        .bind(user.get() as i64)
+        .fetch_optional(pool())
+        .await
+        .map_err(|e| format!("Failed to get user profile data: {}", e))?
+        .unwrap_or_default();
+
+    let second: UserProfileDataSecond = sqlx::query_as(formatcp!(r#"
+        SELECT
+            SUM(IIF(challenge = {}, 1, 0)) as glyphs_submissions,
+            SUM(IIF(challenge = {}, 1, 0)) as ambigrams_submissions
+        FROM submissions
+        WHERE author = ?
+        GROUP BY author;
+    "#, Challenge::Glyph as i64, Challenge::Ambigram as i64))
+        .bind(user.get() as i64)
+        .fetch_optional(pool())
+        .await
+        .map_err(|e| format!("Failed to get user profile data: {}", e))?
+        .unwrap_or_default();
+
+    Ok(UserProfileData {
+        nickname: first.nickname,
+
+        glyphs_first: first.glyphs_first,
+        glyphs_second: first.glyphs_second,
+        glyphs_third: first.glyphs_third,
+
+        ambigrams_first: first.ambigrams_first,
+        ambigrams_second: first.ambigrams_second,
+        ambigrams_third: first.ambigrams_third,
+
+        highest_ranking_glyphs: first.highest_ranking_glyphs,
+        highest_ranking_ambigrams: first.highest_ranking_ambigrams,
+
+        glyphs_submissions: second.glyphs_submissions,
+        ambigrams_submissions: second.ambigrams_submissions,
+    })
+}
+
+
 /// Remove a submission for the current week.
 pub async fn remove_submission(message: MessageId, challenge: Challenge) -> Res {
     sqlx::query(r#"
@@ -159,11 +276,11 @@ pub async fn remove_submission(message: MessageId, challenge: Challenge) -> Res 
         AND week = ?
         AND challenge = ?;
     "#)
-    .bind(message.get() as i64)
-    .bind(current_week().await?)
-    .bind(challenge as i64)
-    .execute(pool())
-    .await
-    .map(|_| ())
-    .map_err(|e| e.into())
+        .bind(message.get() as i64)
+        .bind(current_week().await?)
+        .bind(challenge as i64)
+        .execute(pool())
+        .await
+        .map(|_| ())
+        .map_err(|e| e.into())
 }

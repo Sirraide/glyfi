@@ -1,8 +1,11 @@
 use std::sync::atomic::AtomicBool;
 use poise::{CreateReply};
-use poise::serenity_prelude::{CacheHttp, CreateMessage, UserId};
+use poise::serenity_prelude::{CacheHttp, Colour, CreateMessage, UserId};
 use crate::{__glyfi_terminate_bot, Context, Error, Res};
 use crate::sql::__glyfi_fini_db;
+
+/// Default colour to use for embeds.
+pub const DEFAULT_EMBED_COLOUR: Colour = Colour::from_rgb(176, 199, 107);
 
 /// Logging macros. These macros log an informational or error
 /// message. Depending on the program stage, the message will
