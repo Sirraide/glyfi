@@ -1,8 +1,13 @@
-## Building.
-Either invoke `build.sh` or run the following commands:
+## Running
+The first time you start the bot, or after adding a command, run
+```bash
+$ cargo run -- register
+```
+
+From then on, just run
 
 ```bash
-$ cargo build --bin glyfi-init-db
-$ cargo run --bin glyfi-init-db
-$ cargo build
+$ cargo run
 ```
+
+Press CTRL+C to shut down the bot gracefully.
