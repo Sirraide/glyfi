@@ -1,7 +1,8 @@
+use poise::builtins::register_application_commands;
 use poise::CreateReply;
-use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
+use poise::serenity_prelude::{ButtonStyle, CommandInteraction, CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use crate::{Context, info, Res, sql};
-use crate::core::{DEFAULT_EMBED_COLOUR, file_mtime, handle_command_error, InteractionID};
+use crate::core::{create_embed, DEFAULT_EMBED_COLOUR, file_mtime, handle_command_error, InteractionID, SUBMISSION_INTERACTION_ID_CACHE};
 use crate::sql::Challenge;
 
 /// Edit your nickname.
@@ -40,23 +41,10 @@ pub async fn profile(ctx: Context<'_>) -> Res {
         .unwrap_or(&ctx.author().name)
         .as_str();
 
-    let mut embed = CreateEmbed::new();
-    embed = embed.colour(DEFAULT_EMBED_COLOUR);
+    let mut embed = create_embed(&ctx);
     embed = embed.author(CreateEmbedAuthor::new(format!("{}’s Profile", name))
         .icon_url(ctx.author().face())
     );
-
-    // Safe because we’re always in a guild.
-    {
-        let guild = ctx.guild().unwrap();
-
-        // Set the image to the guild’s icon, if we can retrieve that.
-        if let Some(e) = guild.icon_url() {
-            embed = embed.footer(CreateEmbedFooter::new(guild.name.clone()).icon_url(e));
-        } else {
-            embed = embed.footer(CreateEmbedFooter::new(guild.name.clone()));
-        }
-    }
 
     // Helper to add a field.
     fn add(embed: CreateEmbed, name: &'static str, value: i64) -> CreateEmbed {
@@ -117,7 +105,7 @@ pub async fn profile(ctx: Context<'_>) -> Res {
 }
 
 /// Submit a glyph/ambigram for a challenge.
-#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error")]
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error", default_member_permissions = "ADMINISTRATOR")]
 pub async fn submit(
     ctx: Context<'_>,
     #[description = "Which challenge to set the prompt for"] challenge: Challenge,
@@ -144,23 +132,59 @@ pub async fn submit(
     let path = challenge.announcement_image_path();
 
     // Save prompt.
-    sql::set_prompt(challenge, &prompt).await?;
+    let id = sql::add_prompt(challenge, &prompt).await?;
 
     // Get mtime. This is just a little sanity check.
     let mtime = file_mtime(&path)?;
 
     // Reply with the image.
     ctx.send(CreateReply::default()
-        .content("Announcement for this week’s challenge:")
         .attachment(CreateAttachment::path(path).await?)
         .components(vec![CreateActionRow::Buttons(vec![
             CreateButton::new(format!(
-                "{}:{}:{}",
+                "{}:{}:{}:{}",
                 InteractionID::ConfirmAnnouncement.raw(),
                 challenge.raw(),
                 mtime,
-            )).label("Confirm").style(ButtonStyle::Success)
+                id
+            )).label("Confirm").style(ButtonStyle::Success),
+            CreateButton::new(format!(
+                "{}:{}",
+                InteractionID::CancelAnnouncement.raw(),
+                id
+            )).label("Cancel").style(ButtonStyle::Danger),
         ])])
     ).await?;
+    Ok(())
+}
+
+/// Update bot commands.
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error", default_member_permissions = "ADMINISTRATOR")]
+pub async fn update(ctx: Context<'_>) -> Res {
+    register_application_commands(ctx, false).await?;
+    Ok(())
+}
+
+/// Show stats for a week.
+//
+// Info shown are: That week’s glyph/ambigram, message link to
+// that week’s announcement post, How many submissions there were
+// in that week, how many people voted for that week’s submissions,
+// message link to that week’s submissions post, top 3 winner names,
+// message link to that week’s hall of fame, & the announcement image
+// used for that week.
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error")]
+pub async fn weekinfo(
+    ctx: Context<'_>,
+    #[description = "Which challenge to get stats for"] challenge: Challenge,
+    #[description = "The week whose stats to retrieve"] week: Option<u64>,
+) -> Res {
+    /*let info = sql::weekinfo(week).await?;
+    let mut embed = create_embed(&ctx);
+    embed = embed.author(CreateEmbedAuthor::new(format!("Stats for Week {}", info.week)));
+    embed = embed.field("Submissions", format!("{}", info.submissions), true);*/
+    todo!();
+
+
     Ok(())
 }

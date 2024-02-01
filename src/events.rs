@@ -6,6 +6,17 @@ use crate::sql::Challenge;
 
 pub struct GlyfiEvents;
 
+/// Reply to an interaction.
+macro_rules! reply_ephemeral {
+    ($ctx:expr, $i:expr, $fmt:literal $(,$arg:expr)*) => {
+        $i.create_response(&$ctx, CreateInteractionResponse::Message(
+            CreateInteractionResponseMessage::new()
+                .content(format!($fmt $(,$arg)*))
+                .ephemeral(true)
+        )).await
+    };
+}
+
 /// Execute code and notify the user if execution fails.
 macro_rules! run {
     ($ctx:expr, $user:expr, $code:expr, $msg:expr) => {
@@ -26,6 +37,7 @@ async fn act_on_confirm_announcement(ctx: &Context, i: &mut ComponentInteraction
     let mut it = i.data.custom_id.split(':').skip(1);
     let challenge = it.next().ok_or("Invalid interaction ID")?.parse::<Challenge>()?;
     let time = it.next().ok_or("Invalid interaction ID")?.parse::<u64>()?;
+    let id = it.next().ok_or("Invalid interaction ID")?.parse::<i64>()?;
 
     // Check that the file is not out of date.
     let path = challenge.announcement_image_path();
@@ -35,12 +47,18 @@ async fn act_on_confirm_announcement(ctx: &Context, i: &mut ComponentInteraction
         return Ok(());
     }
 
-    // TODO: Actually mark that we’ve acknowledged the announcement image.
-    let _ = i.create_response(&ctx, CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new()
-            .content("Confirmed.")
-            .ephemeral(true)
-    )).await;
+    // Save prompt.
+    sql::confirm_prompt(id).await?;
+    reply_ephemeral!(ctx, i, "Confirmed.")?;
+    Ok(())
+}
+
+async fn act_on_cancel_announcement(ctx: &Context, i: &mut ComponentInteraction) -> Res {
+    let mut it = i.data.custom_id.split(':').skip(1);
+    let id = it.next().ok_or("Invalid interaction ID")?.parse::<i64>()?;
+
+    sql::delete_prompt(id).await?;
+    reply_ephemeral!(ctx, i, "Cancelled.")?;
     Ok(())
 }
 
@@ -86,7 +104,7 @@ impl EventHandler for GlyfiEvents {
                         err!("{}", e);
                         let _ = i.create_response(ctx, CreateInteractionResponse::Message(
                             CreateInteractionResponseMessage::new()
-                                .content("Error: Unknown ID '{}'")
+                                .content(format!("Error: Unknown ID '{}'", i.data.custom_id))
                                 .ephemeral(true)
                         )).await;
                         return;
@@ -95,6 +113,7 @@ impl EventHandler for GlyfiEvents {
 
                 let res = match id {
                     InteractionID::ConfirmAnnouncement => act_on_confirm_announcement(&ctx, &mut i).await,
+                    InteractionID::CancelAnnouncement => act_on_cancel_announcement(&ctx, &mut i).await,
                 };
 
                 if let Err(e) = res {

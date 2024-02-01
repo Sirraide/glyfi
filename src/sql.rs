@@ -101,6 +101,15 @@ pub struct UserProfileData {
     pub ambigrams_submissions: i64,
 }
 
+#[derive(Clone, Debug, FromRow)]
+pub struct WeekInfo {
+    pub week: i64,
+    pub glyph_challenge_kind: Option<i8>,
+    pub ambigram_challenge_kind: Option<i8>,
+    pub glyph_prompt: Option<String>,
+    pub ambigram_prompt: Option<String>,
+}
+
 static mut __GLYFI_DB_POOL: Option<SqlitePool> = None;
 
 /// Get the global sqlite connexion pool.
@@ -191,10 +200,36 @@ pub async unsafe fn __glyfi_init_db() {
     sqlx::query(r#"
         CREATE TABLE IF NOT EXISTS weeks (
             week INTEGER PRIMARY KEY, -- Week number.
-            glyph_challenge_kind INTEGER, -- See Week enum.
-            ambigram_challenge_kind INTEGER, -- See Week enum.
-            glyph_prompt TEXT, -- Prompt for the Glyphs Challenge.
-            ambigram_prompt TEXT -- Prompt for the Ambigram Challenge.
+
+            -- See Week enum.
+            glyph_challenge_kind INTEGER,
+            ambigram_challenge_kind INTEGER,
+
+            -- Prompts.
+            glyph_prompt TEXT,
+            ambigram_prompt TEXT,
+
+            -- Message ID of the announcement message.
+            glyph_announcement_message INTEGER,
+            ambigram_announcement_message INTEGER,
+
+            -- Message ID of the submissions panel.
+            glyph_panel_message INTEGER,
+            ambigram_panel_message INTEGER,
+
+            -- Message ID of the first hall of fame message.
+            glyph_hof_message INTEGER,
+            ambigram_hof_message INTEGER
+        ) STRICT;
+    "#).execute(pool()).await.unwrap();
+
+    // Table that stores future prompts.
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            challenge INTEGER NOT NULL,
+            prompt TEXT NOT NULL,
+            confirmed INTEGER NOT NULL DEFAULT 0
         ) STRICT;
     "#).execute(pool()).await.unwrap();
 }
@@ -326,37 +361,58 @@ pub async fn set_nickname(user: UserId, name: &str) -> Res {
         INSERT INTO users (id, nickname) VALUES (?1, ?2)
         ON CONFLICT (id) DO UPDATE SET nickname = ?2;
     "#)
-    .bind(user.get() as i64)
-    .bind(name)
-    .execute(pool())
-    .await
-    .map(|_|())
-    .map_err(|e| e.into())
-}
-
-//         CREATE TABLE IF NOT EXISTS weeks (
-//             week INTEGER PRIMARY KEY, -- Week number.
-//             glyph_challenge_kind INTEGER, -- See Week enum.
-//             ambigram_challenge_kind INTEGER, -- See Week enum.
-//             glyph_prompt TEXT, -- Prompt for the Glyphs Challenge.
-//             ambigram_prompt TEXT -- Prompt for the Ambigram Challenge.
-//         ) STRICT;
-
-/// Set the prompt for a challenge and week.
-pub async fn set_prompt(challenge: Challenge, prompt: &str) -> Res {
-    let name = if challenge == Challenge::Glyph { "glyph"} else { "ambigram" };
-    sqlx::query(&format!(r#"
-        INSERT INTO weeks (week, {name}_challenge_kind, {name}_prompt)
-        VALUES (?1, ?2, ?3)
-        ON CONFLICT (week)
-        DO UPDATE
-        SET {name}_challenge_kind = ?2, {name}_prompt = ?3;
-    "#))
-        .bind(current_week().await?)
-        .bind(Week::Regular.raw())
-        .bind(prompt)
+        .bind(user.get() as i64)
+        .bind(name)
         .execute(pool())
         .await
         .map(|_| ())
         .map_err(|e| e.into())
+}
+
+/// Set the prompt for a challenge and week.
+/// Returns the id of the prompt in the DB.
+pub async fn add_prompt(challenge: Challenge, prompt: &str) -> Result<i64, Error> {
+    sqlx::query_scalar("INSERT INTO prompts (challenge, prompt) VALUES (?, ?) RETURNING id")
+        .bind(challenge.raw())
+        .bind(prompt)
+        .fetch_one(pool())
+        .await
+        .map_err(|e| e.into())
+}
+
+/// Confirm a prompt.
+pub async fn confirm_prompt(id: i64) -> Res {
+    sqlx::query("UPDATE prompts SET confirmed = 1 WHERE id = ?")
+        .bind(id)
+        .execute(pool())
+        .await
+        .map(|_| ())
+        .map_err(|e| e.into())
+}
+
+/// Delete a prompt.
+pub async fn delete_prompt(id: i64) -> Res {
+    sqlx::query("DELETE FROM prompts WHERE id = ?")
+        .bind(id)
+        .execute(pool())
+        .await
+        .map(|_| ())
+        .map_err(|e| e.into())
+}
+
+/// Get stats for a week.
+pub async fn weekinfo(week: Option<u64>) -> Result<WeekInfo, Error> {
+    let week = match week {
+       Some(w) => w as i64,
+       None => current_week().await?,
+    };
+
+    sqlx::query_as(r#"
+        SELECT * FROM weeks WHERE week = ? LIMIT 1;
+    "#)
+        .bind(week)
+        .fetch_optional(pool())
+        .await
+        .map_err(|e| format!("Failed to get week info: {}", e))?
+        .ok_or_else(|| format!("No info for week {}", week).into())
 }

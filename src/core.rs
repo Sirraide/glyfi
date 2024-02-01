@@ -1,9 +1,8 @@
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use poise::{CreateReply};
-use poise::serenity_prelude::{CacheHttp, Colour, CreateMessage, UserId};
+use poise::serenity_prelude::{CacheHttp, Colour, CreateEmbed, CreateEmbedFooter, CreateMessage, UserId};
 use crate::{__glyfi_terminate_bot, Context, Error, Res};
-use crate::core::InteractionID::ConfirmAnnouncement;
 use crate::sql::__glyfi_fini_db;
 
 /// Default colour to use for embeds.
@@ -14,6 +13,7 @@ pub const DEFAULT_EMBED_COLOUR: Colour = Colour::from_rgb(176, 199, 107);
 #[repr(u8)]
 pub enum InteractionID {
     ConfirmAnnouncement = 0,
+    CancelAnnouncement = 1,
 }
 
 impl InteractionID {
@@ -25,9 +25,11 @@ impl InteractionID {
 impl FromStr for InteractionID {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use InteractionID::*;
         match s.split(':').next() {
             Some("0") => Ok(ConfirmAnnouncement),
-            id => Err(format!("Unknown interaction ID '{:?}'", id).into())
+            Some("1") => Ok(CancelAnnouncement),
+            id => Err(format!("Unknown interaction ID '{:?}'. Did you forget to update from_str()?", id).into())
         }
     }
 }
@@ -68,6 +70,24 @@ pub async fn __glyfi_log_internal(e: &str) { eprintln!("[Info]: {}", e); }
 pub fn __glyfi_log_internal_error_sync(e: &str) { eprintln!("[Error]: {}", e); }
 
 pub fn __glyfi_log_internal_sync(e: &str) { eprintln!("[Info]: {}", e); }
+
+/// Create an embed with some default settings applied to id.
+pub fn create_embed(ctx: &Context<'_>) -> CreateEmbed {
+    let mut embed = CreateEmbed::new();
+    embed = embed.colour(DEFAULT_EMBED_COLOUR);
+
+    // Safe because we’re always in a guild.
+    let guild = ctx.guild().unwrap();
+
+    // Set the image to the guild’s icon, if we can retrieve that.
+    if let Some(e) = guild.icon_url() {
+        embed = embed.footer(CreateEmbedFooter::new(guild.name.clone()).icon_url(e));
+    } else {
+        embed = embed.footer(CreateEmbedFooter::new(guild.name.clone()));
+    }
+
+    return embed;
+}
 
 /// Get the mtime of a file.
 pub fn file_mtime(path: &str) -> Result<u64, Error> {
