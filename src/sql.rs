@@ -41,6 +41,16 @@ impl FromStr for Challenge {
     }
 }
 
+impl From<i64> for Challenge {
+    fn from(i: i64) -> Self {
+        match i {
+            0 => Challenge::Glyph,
+            1 => Challenge::Ambigram,
+            _ => panic!("Invalid challenge ID {}", i),
+        }
+    }
+}
+
 /// Determines what kind of actions should be taken in a week.
 ///
 /// Every week, we need to perform the following actions for
@@ -388,6 +398,22 @@ pub async fn delete_prompt(id: i64) -> Result<bool, Error> {
         .map(|r| r.rows_affected() > 0)
         .map_err(|e| e.into())
 }
+
+
+/// Get a prompt by id.
+pub async fn get_prompt(id: i64) -> Result<(Challenge, String), Error> {
+    let res: (i64, String) = sqlx::query_as("SELECT challenge, prompt FROM prompts WHERE rowid = ? LIMIT 1")
+        .bind(id)
+        .fetch_optional(pool())
+        .await
+        .map_err(Error::from)
+        .and_then(|r| {
+            r.ok_or_else(|| format!("No prompt with id {}", id).into())
+        })?;
+
+    Ok((Challenge::from(res.0), res.1))
+}
+
 
 /// Get all prompts for a challenge.
 pub async fn get_prompts(challenge: Challenge) -> Result<Vec<(i64, String)>, Error> {
