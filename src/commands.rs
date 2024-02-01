@@ -1,8 +1,8 @@
 use poise::builtins::register_application_commands;
-use poise::CreateReply;
-use poise::serenity_prelude::{ButtonStyle, CommandInteraction, CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
+use poise::{ChoiceParameter, CreateReply};
+use poise::serenity_prelude::{ButtonStyle, CreateActionRow, CreateAttachment, CreateButton, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use crate::{Context, info, Res, sql};
-use crate::core::{create_embed, DEFAULT_EMBED_COLOUR, file_mtime, handle_command_error, InteractionID, SUBMISSION_INTERACTION_ID_CACHE};
+use crate::core::{create_embed, DEFAULT_EMBED_COLOUR, file_mtime, handle_command_error, InteractionID};
 use crate::sql::Challenge;
 
 /// Edit your nickname.
@@ -104,9 +104,12 @@ pub async fn profile(ctx: Context<'_>) -> Res {
     Ok(())
 }
 
-/// Submit a glyph/ambigram for a challenge.
-#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error", default_member_permissions = "ADMINISTRATOR")]
-pub async fn submit(
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error", subcommands("queue_add", "queue_list", "queue_remove"), default_member_permissions = "ADMINISTRATOR")]
+pub async fn queue(ctx: Context<'_>) -> Res { unreachable!(); }
+
+/// Add a glyph/ambigram prompt to the queue.
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error", rename = "add", default_member_permissions = "ADMINISTRATOR")]
+pub async fn queue_add(
     ctx: Context<'_>,
     #[description = "Which challenge to set the prompt for"] challenge: Challenge,
     #[description = "The prompt for the challenge"] prompt: String,
@@ -141,20 +144,58 @@ pub async fn submit(
     ctx.send(CreateReply::default()
         .attachment(CreateAttachment::path(path).await?)
         .components(vec![CreateActionRow::Buttons(vec![
-            CreateButton::new(format!(
+            /*CreateButton::new(format!(
                 "{}:{}:{}:{}",
                 InteractionID::ConfirmAnnouncement.raw(),
                 challenge.raw(),
                 mtime,
                 id
-            )).label("Confirm").style(ButtonStyle::Success),
+            )).label("Confirm").style(ButtonStyle::Success),*/
             CreateButton::new(format!(
                 "{}:{}",
-                InteractionID::CancelAnnouncement.raw(),
+                InteractionID::CancelPrompt.raw(),
                 id
             )).label("Cancel").style(ButtonStyle::Danger),
         ])])
     ).await?;
+    Ok(())
+}
+
+/// Show the current queue for a challenge.
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error", rename = "list", default_member_permissions = "ADMINISTRATOR")]
+pub async fn queue_list(
+    ctx: Context<'_>,
+    #[description = "Which challenge to show the queue for"] challenge: Challenge,
+) -> Res {
+    // Get the queue.
+    let queue = sql::get_prompts(challenge)
+        .await?
+        .iter().map(|p| format!("- **{}:** {}", p.0, p.1))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Create embed.
+    let embed = create_embed(&ctx)
+        .author(CreateEmbedAuthor::new(format!("Queue for {}", challenge.name())))
+        .description(queue);
+
+    // Send it.
+    ctx.send(CreateReply::default().embed(embed)).await?;
+    Ok(())
+}
+
+/// Remove an entry from a queue.
+#[poise::command(slash_command, ephemeral, guild_only, on_error = "handle_command_error", rename = "remove", default_member_permissions = "ADMINISTRATOR")]
+pub async fn queue_remove(
+    ctx: Context<'_>,
+    #[description = "The ID of the entry to remove"] id: i64,
+) -> Res {
+    // Remove it.
+    let changed = sql::delete_prompt(id).await?;
+
+    // Send a reply.
+    if changed { ctx.say("Removed entry from queue").await?; } //
+    else { ctx.say("No such entry").await?; }
     Ok(())
 }
 

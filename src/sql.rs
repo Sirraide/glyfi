@@ -226,10 +226,8 @@ pub async unsafe fn __glyfi_init_db() {
     // Table that stores future prompts.
     sqlx::query(r#"
         CREATE TABLE IF NOT EXISTS prompts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
             challenge INTEGER NOT NULL,
-            prompt TEXT NOT NULL,
-            confirmed INTEGER NOT NULL DEFAULT 0
+            prompt TEXT NOT NULL
         ) STRICT;
     "#).execute(pool()).await.unwrap();
 }
@@ -372,7 +370,7 @@ pub async fn set_nickname(user: UserId, name: &str) -> Res {
 /// Set the prompt for a challenge and week.
 /// Returns the id of the prompt in the DB.
 pub async fn add_prompt(challenge: Challenge, prompt: &str) -> Result<i64, Error> {
-    sqlx::query_scalar("INSERT INTO prompts (challenge, prompt) VALUES (?, ?) RETURNING id")
+    sqlx::query_scalar("INSERT INTO prompts (challenge, prompt) VALUES (?, ?) RETURNING rowid")
         .bind(challenge.raw())
         .bind(prompt)
         .fetch_one(pool())
@@ -380,23 +378,23 @@ pub async fn add_prompt(challenge: Challenge, prompt: &str) -> Result<i64, Error
         .map_err(|e| e.into())
 }
 
-/// Confirm a prompt.
-pub async fn confirm_prompt(id: i64) -> Res {
-    sqlx::query("UPDATE prompts SET confirmed = 1 WHERE id = ?")
+/// Delete a prompt.
+/// Returns whether a prompt was deleted.
+pub async fn delete_prompt(id: i64) -> Result<bool, Error> {
+    sqlx::query("DELETE FROM prompts WHERE rowid = ?")
         .bind(id)
         .execute(pool())
         .await
-        .map(|_| ())
+        .map(|r| r.rows_affected() > 0)
         .map_err(|e| e.into())
 }
 
-/// Delete a prompt.
-pub async fn delete_prompt(id: i64) -> Res {
-    sqlx::query("DELETE FROM prompts WHERE id = ?")
-        .bind(id)
-        .execute(pool())
+/// Get all prompts for a challenge.
+pub async fn get_prompts(challenge: Challenge) -> Result<Vec<(i64, String)>, Error> {
+    sqlx::query_as("SELECT rowid, prompt FROM prompts WHERE challenge = ? ORDER BY rowid ASC")
+        .bind(challenge.raw())
+        .fetch_all(pool())
         .await
-        .map(|_| ())
         .map_err(|e| e.into())
 }
 

@@ -13,7 +13,7 @@ pub const DEFAULT_EMBED_COLOUR: Colour = Colour::from_rgb(176, 199, 107);
 #[repr(u8)]
 pub enum InteractionID {
     ConfirmAnnouncement = 0,
-    CancelAnnouncement = 1,
+    CancelPrompt = 1,
 }
 
 impl InteractionID {
@@ -28,7 +28,7 @@ impl FromStr for InteractionID {
         use InteractionID::*;
         match s.split(':').next() {
             Some("0") => Ok(ConfirmAnnouncement),
-            Some("1") => Ok(CancelAnnouncement),
+            Some("1") => Ok(CancelPrompt),
             id => Err(format!("Unknown interaction ID '{:?}'. Did you forget to update from_str()?", id).into())
         }
     }

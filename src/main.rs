@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 mod server_data;
 mod core;
 mod commands;
@@ -7,7 +9,7 @@ mod events;
 use std::sync::Arc;
 use poise::serenity_prelude as ser;
 use clap::Parser;
-use crate::commands::{nickname, profile, submit};
+use crate::commands::{nickname, profile, queue, update};
 use crate::core::{log_command, terminate};
 use crate::events::GlyfiEvents;
 use crate::server_data::SERVER_ID;
@@ -89,7 +91,8 @@ async fn main() {
             commands: vec![
                 nickname(),
                 profile(),
-                submit(),
+                queue(),
+                update(),
             ],
             ..Default::default()
         })

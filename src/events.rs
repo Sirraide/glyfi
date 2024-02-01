@@ -48,17 +48,16 @@ async fn act_on_confirm_announcement(ctx: &Context, i: &mut ComponentInteraction
     }
 
     // Save prompt.
-    sql::confirm_prompt(id).await?;
     reply_ephemeral!(ctx, i, "Confirmed.")?;
     Ok(())
 }
 
-async fn act_on_cancel_announcement(ctx: &Context, i: &mut ComponentInteraction) -> Res {
+async fn act_on_cancel_prompt(ctx: &Context, i: &mut ComponentInteraction) -> Res {
     let mut it = i.data.custom_id.split(':').skip(1);
     let id = it.next().ok_or("Invalid interaction ID")?.parse::<i64>()?;
 
-    sql::delete_prompt(id).await?;
-    reply_ephemeral!(ctx, i, "Cancelled.")?;
+    let changed = sql::delete_prompt(id).await?;
+    reply_ephemeral!(ctx, i, "{}", if changed { "Cancelled." } else { "Entry has already been cancelled." })?;
     Ok(())
 }
 
@@ -113,7 +112,7 @@ impl EventHandler for GlyfiEvents {
 
                 let res = match id {
                     InteractionID::ConfirmAnnouncement => act_on_confirm_announcement(&ctx, &mut i).await,
-                    InteractionID::CancelAnnouncement => act_on_cancel_announcement(&ctx, &mut i).await,
+                    InteractionID::CancelPrompt => act_on_cancel_prompt(&ctx, &mut i).await,
                 };
 
                 if let Err(e) = res {
